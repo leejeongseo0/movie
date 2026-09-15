@@ -764,4 +764,3 @@ for start in range(
 st.caption(
     "출처: 영화진흥위원회 영화관입장권통합전산망(KOBIS)"
 )
-```
