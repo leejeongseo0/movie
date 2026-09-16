@@ -1,7 +1,7 @@
 import datetime
+from zoneinfo import ZoneInfo
 import requests
 import pandas as pd
-import pytz
 import streamlit as st
 
 # 1. 페이지 제목 및 레이아웃 설정 (영화관 테마 아이콘 설정)
@@ -30,7 +30,7 @@ st.markdown("""
         box-shadow: 0 4px 15px rgba(255, 215, 0, 0.2);
     }
     
-    /* 영화 카드 스타일ing */
+    /* 영화 카드 스타일링 */
     .movie-card {
         background-color: #1a1a24;
         padding: 15px;
@@ -55,9 +55,8 @@ try:
 except Exception:
     API_KEY = None
 
-# 4. 날짜 계산 (한국 시간 Asia/Seoul 기준, '어제' 날짜 추출)
-korea_tz = pytz.timezone('Asia/Seoul')
-now_korea = datetime.datetime.now(korea_tz)
+# 4. 날짜 계산 (파이썬 기본 내장 ZoneInfo 모듈 사용으로 한국 시간 기준 '어제' 추출)
+now_korea = datetime.datetime.now(ZoneInfo('Asia/Seoul'))
 yesterday_korea = now_korea - datetime.timedelta(days=1)
 target_dt = yesterday_korea.strftime('%Y%m%d')
 formatted_date = yesterday_korea.strftime('%Y년 %m월 %d일')
@@ -154,7 +153,7 @@ else:
             st.error("⚠️ **예상치 못한 응답 구조입니다.**")
             st.info("KOBIS API 서버 상태를 확인해 주세요.")
             
-    except requests.exceptions.RequestException as e:
+    except requests.exceptions.RequestException:
         st.error("🌐 **네트워크 통신 오류가 발생했습니다.**")
         st.info("인터넷 연결 상태나 KOBIS API 서버 응답 유무를 확인해 주세요.")
 
