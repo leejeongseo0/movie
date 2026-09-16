@@ -1,766 +1,180 @@
-```python
-# main.py
-# 어제의 박스오피스 + 역대 1000만 관객 영화 정보를 보여주는 Streamlit 앱
-
+import datetime
 import requests
 import pandas as pd
+import pytz
 import streamlit as st
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 
-
-# --------------------------------------------------
-# 1. 페이지 기본 설정
-# --------------------------------------------------
-
+# 1. 페이지 제목 및 레이아웃 설정 (영화관 테마 아이콘 설정)
 st.set_page_config(
-    page_title="어제의 박스오피스",
-    page_icon="🎬",
+    page_title="일일 박스오피스 극장",
+    page_icon="🍿",
     layout="wide"
 )
 
-
-# --------------------------------------------------
-# 2. 영화관 느낌의 검은색 디자인
-# --------------------------------------------------
-# Streamlit 기본 화면을 어두운 영화관처럼 보이도록 변경합니다.
-
-st.markdown(
-    """
-    <style>
-
-    /* 전체 배경 */
+# 2. 커스텀 CSS - 팝콘과 4D 안경 모티프 및 영화관 느낌의 다크 스타일 연출
+st.markdown("""
+<style>
+    /* 배경 및 분위기 연출 */
     .stApp {
-        background-color: #080808;
-        color: #FFFFFF;
+        background-color: #0e0e12;
+        color: #f1f1f1;
     }
-
-    /* 메인 영역 */
-    .main {
-        background-color: #080808;
-    }
-
-    /* 제목 */
-    h1, h2, h3 {
-        color: #FFFFFF !important;
-    }
-
-    /* 일반 글씨 */
-    p, span, label {
-        color: #D0D0D0;
-    }
-
-    /* 구분선 */
-    hr {
-        border-color: #333333;
-    }
-
-    /* 지표 카드 */
-    [data-testid="stMetric"] {
-        background-color: #151515;
-        border: 1px solid #333333;
-        border-radius: 12px;
+    
+    /* 팝콘, 4D 안경 메인 헤더 배너 */
+    .cinema-header {
+        text-align: center;
         padding: 20px;
+        background: linear-gradient(135deg, #1f1c2c 0%, #928DAB 100%);
+        border-radius: 15px;
+        margin-bottom: 25px;
+        box-shadow: 0 4px 15px rgba(255, 215, 0, 0.2);
     }
-
-    [data-testid="stMetricLabel"] {
-        color: #AAAAAA !important;
-    }
-
-    [data-testid="stMetricValue"] {
-        color: #FFFFFF !important;
-    }
-
-    /* 표 */
-    [data-testid="stDataFrame"] {
-        background-color: #111111;
-    }
-
-    /* 영화 카드 */
+    
+    /* 영화 카드 스타일ing */
     .movie-card {
-        background-color: #151515;
-        border: 1px solid #303030;
-        border-radius: 12px;
-        padding: 12px;
-        height: 100%;
+        background-color: #1a1a24;
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid #333;
         text-align: center;
     }
+</style>
+""", unsafe_allow_html=True)
 
-    .movie-card img {
-        width: 100%;
-        border-radius: 8px;
-        margin-bottom: 10px;
-    }
+# 팝콘 & 4D 안경 헤더 장식 출력
+st.markdown("""
+<div class="cinema-header">
+    <h1>🍿 🕶️ 영화관 일일 박스오피스 🕶️ 🍿</h1>
+    <p>4D 안경을 쓰고 팝콘을 먹으며 확인하는 최신 박스오피스 순위!</p>
+</div>
+""", unsafe_allow_html=True)
 
-    .movie-rank {
-        color: #999999;
-        font-size: 14px;
-        margin-bottom: 4px;
-    }
-
-    .movie-title {
-        color: #FFFFFF;
-        font-size: 17px;
-        font-weight: bold;
-        margin-bottom: 8px;
-    }
-
-    .movie-audience {
-        color: #CCCCCC;
-        font-size: 14px;
-    }
-
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-
-# --------------------------------------------------
-# 3. 제목
-# --------------------------------------------------
-
-st.title("🎬 어제의 박스오피스")
-st.caption("영화진흥위원회 KOBIS 일일 박스오피스 기준")
-
-
-# --------------------------------------------------
-# 4. 한국 시간 기준으로 '어제' 계산
-# --------------------------------------------------
-
-# Streamlit Cloud 서버의 시간이 한국 시간이 아닐 수 있기 때문에
-# 한국 시간(Asia/Seoul)을 기준으로 날짜를 계산합니다.
-
-KST = ZoneInfo("Asia/Seoul")
-
-today_kst = datetime.now(KST).date()
-yesterday_kst = today_kst - timedelta(days=1)
-
-# KOBIS API가 요구하는 YYYYMMDD 형식
-target_date = yesterday_kst.strftime("%Y%m%d")
-
-# 화면에 표시할 날짜
-display_date = yesterday_kst.strftime("%Y년 %m월 %d일")
-
-
-# --------------------------------------------------
-# 5. KOBIS API 주소와 인증키
-# --------------------------------------------------
-
-API_URL = (
-    "https://www.kobis.or.kr/kobisopenapi/webservice/rest/"
-    "boxoffice/searchDailyBoxOfficeList.json"
-)
-
-# 인증키는 코드에 직접 작성하지 않습니다.
-# Streamlit Cloud의 Secrets에서 가져옵니다.
-
+# 3. 인증키 가져오기 (Secrets 가상 금고에서 가져옴)
 try:
-    KOBIS_KEY = st.secrets["KOBIS_KEY"]
-
+    API_KEY = st.secrets["KOBIS_KEY"]
 except Exception:
-    st.error("KOBIS 인증키를 불러오지 못했습니다.")
-
-    st.info(
-        "Streamlit Cloud의 앱 설정에서 Secrets를 열고 "
-        "`KOBIS_KEY`라는 이름으로 인증키를 등록했는지 확인해 주세요."
-    )
-
-    st.stop()
-
-
-# --------------------------------------------------
-# 6. KOBIS API 요청
-# --------------------------------------------------
-
-params = {
-    "key": KOBIS_KEY,
-    "targetDt": target_date
-}
-
-try:
-
-    response = requests.get(
-        API_URL,
-        params=params,
-        timeout=10
-    )
-
-    response.raise_for_status()
-
-    data = response.json()
-
-except requests.exceptions.Timeout:
-
-    st.error("KOBIS API 요청 시간이 초과되었습니다.")
-
-    st.info(
-        "인터넷 연결 상태나 KOBIS 서버 상태를 확인한 뒤 "
-        "잠시 후 다시 실행해 주세요."
-    )
-
-    st.stop()
-
-except requests.exceptions.RequestException:
-
-    st.error("KOBIS API에 요청하는 중 오류가 발생했습니다.")
-
-    st.info(
-        "KOBIS API 주소, 인터넷 연결 상태 또는 "
-        "KOBIS 서버 상태를 확인해 주세요."
-    )
-
-    st.stop()
-
-except ValueError:
-
-    st.error("KOBIS API가 올바른 JSON 데이터를 반환하지 않았습니다.")
-
-    st.info(
-        "KOBIS API 서버의 응답 상태를 확인한 뒤 "
-        "잠시 후 다시 시도해 주세요."
-    )
-
-    st.stop()
-
-
-# --------------------------------------------------
-# 7. KOBIS API 오류 확인
-# --------------------------------------------------
-
-# KOBIS는 인증키가 틀려도 HTTP 상태코드가 200일 수 있습니다.
-# 따라서 faultInfo가 있는지를 별도로 확인합니다.
-
-if "faultInfo" in data:
-
-    fault_info = data["faultInfo"]
-
-    error_code = fault_info.get(
-        "errorCode",
-        "알 수 없음"
-    )
-
-    error_message = fault_info.get(
-        "message",
-        "KOBIS API에서 오류가 발생했습니다."
-    )
-
-    st.error("KOBIS API에서 오류가 반환되었습니다.")
-
-    st.warning(
-        f"오류 코드: {error_code}\n\n"
-        f"오류 내용: {error_message}"
-    )
-
-    st.info(
-        "다음 내용을 확인해 주세요.\n\n"
-        "• Streamlit Secrets에 KOBIS_KEY가 정확히 등록되어 있는지\n"
-        "• 인증키 앞뒤에 불필요한 공백이 없는지\n"
-        "• KOBIS에서 발급받은 인증키가 정상적으로 사용 가능한지"
-    )
-
-    st.stop()
-
-
-# --------------------------------------------------
-# 8. 박스오피스 데이터 가져오기
-# --------------------------------------------------
-
-box_office_result = data.get("boxOfficeResult")
-
-if not box_office_result:
-
-    st.error("KOBIS 박스오피스 데이터를 찾을 수 없습니다.")
-
-    st.info(
-        "KOBIS API의 응답 구조가 정상적인지 확인하거나 "
-        "잠시 후 다시 시도해 주세요."
-    )
-
-    st.stop()
-
-
-movie_list = box_office_result.get(
-    "dailyBoxOfficeList",
-    []
-)
-
-
-# 영화 목록이 없는 경우
-if not movie_list:
-
-    st.warning(
-        f"{display_date}의 박스오피스 영화 목록이 없습니다."
-    )
-
-    st.info(
-        "다음 내용을 확인해 주세요.\n\n"
-        "• KOBIS에서 해당 날짜의 일일 박스오피스가 집계되었는지\n"
-        "• 조회 날짜가 정상적으로 계산되었는지\n"
-        "• KOBIS API 서버에 일시적인 문제가 없는지\n"
-        "• 잠시 후 다시 실행해 보기"
-    )
-
-    st.stop()
-
-
-# --------------------------------------------------
-# 9. 데이터를 표로 만들기
-# --------------------------------------------------
-
-df = pd.DataFrame(movie_list)
-
-
-# KOBIS는 숫자도 문자열로 보내므로 숫자로 변환합니다.
-
-numeric_columns = [
-    "rank",
-    "audiCnt",
-    "audiAcc",
-    "scrnCnt"
-]
-
-for column in numeric_columns:
-
-    df[column] = pd.to_numeric(
-        df[column],
-        errors="coerce"
-    )
-
-
-# --------------------------------------------------
-# 10. 화면에 표시할 표 만들기
-# --------------------------------------------------
-
-display_df = df[
-    [
-        "rank",
-        "movieNm",
-        "openDt",
-        "audiCnt",
-        "audiAcc",
-        "scrnCnt"
-    ]
-].copy()
-
-
-display_df.columns = [
-    "순위",
-    "영화명",
-    "개봉일",
-    "관객수",
-    "누적관객",
-    "스크린수"
-]
-
-
-# 숫자를 보기 편하게 표시
-
-display_df["관객수"] = display_df["관객수"].map(
-    lambda x: f"{int(x):,}" if pd.notna(x) else "-"
-)
-
-display_df["누적관객"] = display_df["누적관객"].map(
-    lambda x: f"{int(x):,}" if pd.notna(x) else "-"
-)
-
-display_df["스크린수"] = display_df["스크린수"].map(
-    lambda x: f"{int(x):,}" if pd.notna(x) else "-"
-)
-
-
-# --------------------------------------------------
-# 11. 조회 날짜
-# --------------------------------------------------
-
-st.subheader(f"📅 {display_date}")
-
-st.caption(
-    "※ 관객수는 해당 날짜의 관객수이며, "
-    "누적관객은 해당 날짜까지의 누적 관객수입니다."
-)
-
-
-# --------------------------------------------------
-# 12. 1위 영화
-# --------------------------------------------------
-
-first_movie = df.iloc[0]
-
-first_movie_name = first_movie["movieNm"]
-
-first_movie_audience = int(
-    first_movie["audiCnt"]
-)
-
-first_movie_acc = int(
-    first_movie["audiAcc"]
-)
-
-first_movie_screen = int(
-    first_movie["scrnCnt"]
-)
-
-
-st.subheader(f"🏆 1위: {first_movie_name}")
-
-
-col1, col2, col3 = st.columns(3)
-
-
-with col1:
-
-    st.metric(
-        label="어제 관객수",
-        value=f"{first_movie_audience:,}명"
-    )
-
-
-with col2:
-
-    st.metric(
-        label="누적 관객수",
-        value=f"{first_movie_acc:,}명"
-    )
-
-
-with col3:
-
-    st.metric(
-        label="스크린수",
-        value=f"{first_movie_screen:,}개"
-    )
-
-
-# --------------------------------------------------
-# 13. 관객수 상위 5편 막대그래프
-# --------------------------------------------------
-
-st.subheader("📊 관객수 상위 5편")
-
-
-top5 = df.head(5).copy()
-
-
-top5["audiCnt"] = pd.to_numeric(
-    top5["audiCnt"],
-    errors="coerce"
-)
-
-
-chart_data = top5[
-    ["movieNm", "audiCnt"]
-].set_index("movieNm")
-
-
-st.bar_chart(
-    chart_data,
-    x_label="영화",
-    y_label="관객수"
-)
-
-
-# --------------------------------------------------
-# 14. 전체 박스오피스 표
-# --------------------------------------------------
-
-st.subheader("🎞️ 전체 박스오피스")
-
-
-st.dataframe(
-    display_df,
-    use_container_width=True,
-    hide_index=True
-)
-
-
-# ==================================================
-# 15. 역대 1000만 관객 영화
-# ==================================================
-#
-# 여기부터 새로 추가된 기능입니다.
-#
-# KOBIS의 누적관객수를 기준으로 10,000,000명 이상인
-# 영화를 보여줍니다.
-#
-# 영화 포스터는 KOBIS에서 제공하는 영화 이미지 주소를
-# 이용합니다.
-# ==================================================
-
-
-st.divider()
-
-st.header("🏆 역대 1000만 관객 영화")
-
-st.caption(
-    "누적 관객수 1,000만 명 이상을 기록한 영화"
-)
-
-
-# --------------------------------------------------
-# 16. 역대 1000만 영화 데이터
-# --------------------------------------------------
-#
-# 이 부분은 앱에서 자동으로 불러올 수 있도록
-# 영화 목록과 누적 관객수를 함께 관리합니다.
-#
-# KOBIS의 영화정보/박스오피스 데이터와 연결하여
-# 포스터를 가져옵니다.
-#
-# 영화 코드(movieCd)를 이용하면 영화 정보를
-# 추가로 조회할 수 있습니다.
-# --------------------------------------------------
-
-
-TEN_MILLION_MOVIES = [
-    # 영화명, KOBIS 영화코드, 누적관객수
-    ("명량", "20146141", 17613682),
-    ("극한직업", "20182530", 16264944),
-    ("신과함께-죄와 벌", "20150976", 14414658),
-    ("국제시장", "20124079", 14257115),
-    ("베테랑", "20142408", 13414358),
-    ("서울의 봄", "20212866", 13128537),
-    ("아바타", "20096262", 13334432),
-    ("도둑들", "20112871", 12983744),
-    ("7번방의 선물", "20127592", 12811206),
-    ("알라딘", "20183867", 12797715),
-    ("암살", "20148851", 12705700),
-    ("범죄도시2", "20210028", 12693195),
-    ("광해, 왕이 된 남자", "20124021", 12323195),
-    ("신과함께-인과 연", "20180613", 12274849),
-    ("택시운전사", "20162545", 12189287),
-    ("파묘", "20233033", 11916000),
-    ("태극기 휘날리며", "20040012", 11746135),
-    ("부산행", "20156564", 11565479),
-    ("변호인", "20124050", 11374610),
-    ("해운대", "20090046", 11453264),
-    ("어벤져스: 인피니티 워", "20177478", 11212710),
-    ("실미도", "20030046", 11081000),
-    ("괴물", "20060135", 10917458),
-    ("아바타: 물의 길", "20223279", 10805065),
-    ("왕의 남자", "20051236", 10514600),
-    ("기생충", "20183782", 10313120),
-    ("인터스텔라", "20128479", 10342523),
-    ("겨울왕국", "20139220", 10296101),
-    ("검사외전", "20153444", 9707581),
-]
-
-
-# --------------------------------------------------
-# 17. 1000만 영화 데이터를 DataFrame으로 변환
-# --------------------------------------------------
-
-million_df = pd.DataFrame(
-    TEN_MILLION_MOVIES,
-    columns=[
-        "영화명",
-        "movieCd",
-        "누적관객"
-    ]
-)
-
-
-# 누적관객이 높은 순서대로 정렬
-
-million_df = million_df.sort_values(
-    "누적관객",
-    ascending=False
-).reset_index(drop=True)
-
-
-# --------------------------------------------------
-# 18. 영화 포스터 가져오기
-# --------------------------------------------------
-#
-# KOBIS 영화정보 API에서 영화 정보를 가져옵니다.
-#
-# 포스터 주소가 없는 경우에는
-# 기본 영화 아이콘을 보여줍니다.
-# --------------------------------------------------
-
-
-MOVIE_INFO_URL = (
-    "https://www.kobis.or.kr/kobisopenapi/webservice/rest/"
-    "movie/searchMovieInfo.json"
-)
-
-
-def get_movie_poster(movie_code):
-    """
-    영화 코드를 이용해 KOBIS 영화정보를 조회하고
-    포스터 주소를 가져오는 함수입니다.
-    """
-
+    API_KEY = None
+
+# 4. 날짜 계산 (한국 시간 Asia/Seoul 기준, '어제' 날짜 추출)
+korea_tz = pytz.timezone('Asia/Seoul')
+now_korea = datetime.datetime.now(korea_tz)
+yesterday_korea = now_korea - datetime.timedelta(days=1)
+target_dt = yesterday_korea.strftime('%Y%m%d')
+formatted_date = yesterday_korea.strftime('%Y년 %m월 %d일')
+
+st.write(f"📅 **조회 기준일자 (한국 시간):** {formatted_date}")
+
+# 5. API 인증키 검증 및 데이터 요청 처리
+if not API_KEY:
+    st.error("🔑 **API 키가 설정되지 않았습니다!**")
+    st.info("""
+    **확인 방법:**
+    1. Streamlit Cloud의 **App settings -> Secrets** 메뉴로 이동하세요.
+    2. 아래 형식으로 KOBIS 인증키를 추가해 주세요:
+       ```toml
+       KOBIS_KEY = "발급받은_인증키_입력"
+       ```
+    """)
+else:
+    # API 요청 URL 및 파라미터 준비
+    url = "https://www.kobis.or.kr/kobisopenapi/webservice/rest/boxoffice/searchDailyBoxOfficeList.json"
+    params = {
+        "key": API_KEY,
+        "targetDt": target_dt
+    }
+    
     try:
-
-        params = {
-            "key": KOBIS_KEY,
-            "movieCd": movie_code
-        }
-
-        response = requests.get(
-            MOVIE_INFO_URL,
-            params=params,
-            timeout=10
-        )
-
-        response.raise_for_status()
-
-        movie_data = response.json()
-
-        movie_info = movie_data.get(
-            "movieInfoResult",
-            {}
-        ).get(
-            "movieInfo",
-            {}
-        )
-
-        # KOBIS 영화정보 API에는 영화 포스터 자체가
-        # 항상 들어 있는 것은 아니므로 posterUrl이
-        # 없는 경우 빈 문자열을 반환합니다.
-
-        poster_url = movie_info.get(
-            "posterUrl",
-            ""
-        )
-
-        return poster_url
-
-    except Exception:
-        return ""
-
-
-# --------------------------------------------------
-# 19. 포스터를 가져와 화면에 표시
-# --------------------------------------------------
-#
-# 한 번 가져온 포스터는 다시 API를 호출하지 않도록
-# Streamlit 캐시를 사용합니다.
-# --------------------------------------------------
-
-
-@st.cache_data(ttl=86400)
-def load_movie_posters(movie_codes):
-
-    posters = {}
-
-    for movie_code in movie_codes:
-
-        posters[movie_code] = get_movie_poster(
-            movie_code
-        )
-
-    return posters
-
-
-movie_codes = tuple(
-    million_df["movieCd"].tolist()
-)
-
-
-posters = load_movie_posters(
-    movie_codes
-)
-
-
-# --------------------------------------------------
-# 20. 영화 카드 출력
-# --------------------------------------------------
-#
-# 한 줄에 5개의 영화를 보여줍니다.
-# --------------------------------------------------
-
-
-for start in range(
-    0,
-    len(million_df),
-    5
-):
-
-    row = million_df.iloc[
-        start:start + 5
-    ]
-
-    columns = st.columns(5)
-
-    for column, (_, movie) in zip(
-        columns,
-        row.iterrows()
-    ):
-
-        with column:
-
-            movie_name = movie["영화명"]
-
-            movie_code = movie["movieCd"]
-
-            audience = int(
-                movie["누적관객"]
-            )
-
-            poster_url = posters.get(
-                movie_code,
-                ""
-            )
-
-
-            # 포스터가 있으면 실제 포스터 표시
-            if poster_url:
-
-                st.image(
-                    poster_url,
-                    use_container_width=True
-                )
-
-            # 포스터가 없을 때
+        response = requests.get(url, params=params, timeout=10)
+        data = response.json()
+        
+        # 에러 응답(faultInfo) 확인 및 리스트 존재 여부 체크
+        if "faultInfo" in data:
+            st.error("⚠️ **영화진흥위원회 API 응답 오류가 발생했습니다.**")
+            st.warning(f"오류 메시지: {data['faultInfo'].get('message', '알 수 없는 오류')}")
+            st.info("💡 **확인 사항:** 입력하신 `KOBIS_KEY` 인증키가 올바른지 확인해 주세요.")
+        elif "boxOfficeResult" in data and "dailyBoxOfficeList" in data["boxOfficeResult"]:
+            box_office_list = data["boxOfficeResult"]["dailyBoxOfficeList"]
+            
+            if not box_office_list:
+                st.warning("🎬 **선택한 날짜의 박스오피스 데이터가 비어 있습니다.**")
+                st.info("💡 집계 작업 중이거나 해당 날짜의 데이터가 아직 업데이트되지 않았을 수 있습니다.")
             else:
-
-                st.markdown(
-                    """
-                    <div style="
-                        height: 330px;
-                        background-color: #222222;
-                        border-radius: 8px;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        color: #777777;
-                        font-size: 45px;
-                    ">
-                    🎬
-                    </div>
-                    """,
-                    unsafe_allow_html=True
+                # 판다스 데이터프레임 변환
+                df = pd.DataFrame(box_office_list)
+                
+                # 수치 데이터 형변환 (문자열 -> 숫자)
+                df['rank'] = df['rank'].astype(int)
+                df['audiCnt'] = df['audiCnt'].astype(int)
+                df['audiAcc'] = df['audiAcc'].astype(int)
+                df['scrnCnt'] = df['scrnCnt'].astype(int)
+                
+                # -------------------------------------------------------------
+                # 🏆 1위 영화 지표 카드 (Metric 3장)
+                # -------------------------------------------------------------
+                top_movie = df.iloc[0]
+                st.subheader(f"🥇 어제의 1위 영화: {top_movie['movieNm']}")
+                
+                col1, col2, col3 = st.columns(3)
+                col1.metric("🎬 일일 관객수", f"{top_movie['audiCnt']:,} 명")
+                col2.metric("🍿 누적 관객수", f"{top_movie['audiAcc']:,} 명")
+                col3.metric("🖥️ 스크린수", f"{top_movie['scrnCnt']:,} 개")
+                
+                st.divider()
+                
+                # -------------------------------------------------------------
+                # 📊 관객수 상위 5편 막대그래프
+                # -------------------------------------------------------------
+                st.subheader("📊 관객수 상위 5개 영화")
+                top5_df = df.head(5)[['movieNm', 'audiCnt']].set_index('movieNm')
+                st.bar_chart(top5_df)
+                
+                st.divider()
+                
+                # -------------------------------------------------------------
+                # 📋 전체 순위표 (테이블)
+                # -------------------------------------------------------------
+                st.subheader("📋 전체 박스오피스 순위")
+                
+                # 컬럼명 한국어 변경 및 필요한 열만 선별
+                display_df = df[['rank', 'movieNm', 'openDt', 'audiCnt', 'audiAcc', 'scrnCnt']].copy()
+                display_df.columns = ['순위', '영화명', '개봉일', '관객수', '누적관객수', '스크린수']
+                
+                # 숫자 포맷 변경하여 표시
+                st.dataframe(
+                    display_df,
+                    column_config={
+                        "관객수": st.column_config.NumberColumn(format="%d 명"),
+                        "누적관객수": st.column_config.NumberColumn(format="%d 명"),
+                        "스크린수": st.column_config.NumberColumn(format="%d 개")
+                    },
+                    use_container_width=True,
+                    hide_index=True
                 )
+        else:
+            st.error("⚠️ **예상치 못한 응답 구조입니다.**")
+            st.info("KOBIS API 서버 상태를 확인해 주세요.")
+            
+    except requests.exceptions.RequestException as e:
+        st.error("🌐 **네트워크 통신 오류가 발생했습니다.**")
+        st.info("인터넷 연결 상태나 KOBIS API 서버 응답 유무를 확인해 주세요.")
 
+# -------------------------------------------------------------
+# 🍿 역대 1,000만 관객 돌파 대표 영화 명예의 전당
+# -------------------------------------------------------------
+st.divider()
+st.subheader("🕶️ 역대 1,000만 명작 명예의 전당 🍿")
+st.write("한국 극장가를 뜨겁게 달궜던 대표 천만 영화들입니다!")
 
-            st.markdown(
-                f"""
-                <div class="movie-card">
+hall_of_fame = [
+    {"title": "명량 (2014)", "views": "1,761만 명", "img": "https://encrypted-tbn1.gstatic.com/licensed-image?q=tbn:ANd9GcScDrj-0T082a0ilx7WWN27rY4f--OUO8C_AgXisyCT9afv7z836tb0NHM6dCgZzEWe8btFQGMWWMweL1A"},
+    {"title": "극한직업 (2019)", "views": "1,626만 명", "img": "https://dimg.donga.com/wps/SPORTS/IMAGE/2019/02/06/93399794.11.jpg"},
+    {"title": "신과함께-죄와 벌 (2017)", "views": "1,441만 명", "img": "https://encrypted-tbn0.gstatic.com/licensed-image?q=tbn:ANd9GcSfKC4nZE8sxg7P6dDQJhqgs5MCwgtDoBN_kx6tXRlbuqDnGdkKj4isJ45KpfXfn6mbgM195q5NHuSFDak"},
+    {"title": "태극기 휘날리며 (2004)", "views": "1,174만 명", "img": "https://encrypted-tbn0.gstatic.com/licensed-image?q=tbn:ANd9GcQX4wr7nN8vctb3XBWcQAuq3xke22pXM0MYaYthKXUU75bSDXAfBSy6n7drPpjBH9CHb-psdt1hLevxOwU"}
+]
 
-                    <div class="movie-rank">
-                        {start + list(row.index).index(_)+1}위
-                    </div>
+fame_cols = st.columns(len(hall_of_fame))
 
-                    <div class="movie-title">
-                        {movie_name}
-                    </div>
-
-                    <div class="movie-audience">
-                        누적 {audience:,}명
-                    </div>
-
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-
-# --------------------------------------------------
-# 21. 출처
-# --------------------------------------------------
-
-st.caption(
-    "출처: 영화진흥위원회 영화관입장권통합전산망(KOBIS)"
-)
+for idx, movie in enumerate(hall_of_fame):
+    with fame_cols[idx]:
+        st.image(movie["img"], use_container_width=True)
+        st.caption(f"**{movie['title']}**\n\n🎉 {movie['views']}")
