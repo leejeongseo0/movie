@@ -35,16 +35,17 @@ st.markdown("""
         text-shadow: 0 0 10px rgba(244, 114, 182, 0.5);
     }
     </style>
-""", unsafe_allow_html=True)  # <-- 오타 수정 부분 (unsafe_allow_keywords -> unsafe_allow_html)
+""", unsafe_allow_html=True)
 
 st.title("🌙 밤하늘의 선율")
 st.caption("당신의 마음과 계절, 순간의 감정에 어울리는 음악을 띄워드립니다.")
 
-# 비밀 금고(secrets) 점검 및 API 키 접속
+# secrets 설정 확인
 if "GEMINI_API_KEY" not in st.secrets:
     st.error("secrets.toml 파일 또는 Streamlit Secrets에 GEMINI_API_KEY가 설정되지 않았습니다.")
     st.stop()
 
+# OpenAI 호환 규격 클라이언트 생성
 client = OpenAI(
     api_key=st.secrets["GEMINI_API_KEY"],
     base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
@@ -61,7 +62,7 @@ SYSTEM_PROMPT = (
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-# 이전 대화 출력
+# 이전 대화 출력 (시스템 프롬프트 제외)
 for msg in st.session_state.messages:
     if msg["role"] != "system":
         with st.chat_message(msg["role"]):
@@ -78,7 +79,7 @@ if user_input:
     with st.chat_message("assistant"):
         try:
             stream = client.chat.completions.create(
-                model="gemini-1.5-flash",
+                model="models/gemini-1.5-flash",  # Gemini OpenAI 엔드포인트 전용 규격
                 messages=st.session_state.messages,
                 stream=True,
             )
@@ -89,3 +90,4 @@ if user_input:
             st.session_state.messages.append({"role": "assistant", "content": answer})
         except Exception as e:
             st.error(f"선율을 불러오는 중에 문제가 발생했습니다: {e}")
+            
