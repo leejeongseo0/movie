@@ -35,12 +35,16 @@ st.markdown("""
         text-shadow: 0 0 10px rgba(244, 114, 182, 0.5);
     }
     </style>
-""", unsafe_allow_keywords=True)
+""", unsafe_allow_html=True)  # <-- 오타 수정 부분 (unsafe_allow_keywords -> unsafe_allow_html)
 
 st.title("🌙 밤하늘의 선율")
 st.caption("당신의 마음과 계절, 순간의 감정에 어울리는 음악을 띄워드립니다.")
 
-# 비밀 금고(secrets)에서 API 키를 꺼내 접속 준비
+# 비밀 금고(secrets) 점검 및 API 키 접속
+if "GEMINI_API_KEY" not in st.secrets:
+    st.error("secrets.toml 파일 또는 Streamlit Secrets에 GEMINI_API_KEY가 설정되지 않았습니다.")
+    st.stop()
+
 client = OpenAI(
     api_key=st.secrets["GEMINI_API_KEY"],
     base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
@@ -74,7 +78,7 @@ if user_input:
     with st.chat_message("assistant"):
         try:
             stream = client.chat.completions.create(
-                model="gemini-3.5-flash-lite",
+                model="gemini-2.5-flash",
                 messages=st.session_state.messages,
                 stream=True,
             )
@@ -83,5 +87,5 @@ if user_input:
                 for chunk in stream if chunk.choices
             )
             st.session_state.messages.append({"role": "assistant", "content": answer})
-        except Exception:
-            st.error("선율을 불러오는 중에 작은 문제가 생겼습니다. 잠시 후 다시 시도해 주세요.")
+        except Exception as e:
+            st.error(f"선율을 불러오는 중에 문제가 발생했습니다: {e}")
