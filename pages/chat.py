@@ -78,7 +78,7 @@ if user_input:
     with st.chat_message("assistant"):
         try:
             stream = client.chat.completions.create(
-                model="gemini-2.5-flash",
+                model="gemini-1.5-flash",
                 messages=st.session_state.messages,
                 stream=True,
             )
